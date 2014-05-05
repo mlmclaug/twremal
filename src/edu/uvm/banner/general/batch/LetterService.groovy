@@ -17,14 +17,14 @@ class LetterService {
  04	Selection ID		-S-	Code that identifies the sub-population to work with
  05	Creator ID			-S-	The ID of the person creating the sub-population rules
  06	User ID				-S-	The ID of the person using the sub-population rules
- 07	Email Bill Recipients-S-Send notification to the bill recipients of the most recent bill
+ 07	Verbose Output		-S- provide detailed output of the processing.
  08	Email Address Types	-M-	E-Mail Address Types to email to (CSO, AUTH, PY)
  09	Proxy Roles			-M-	Proxy Roles to send the email to.
  10	Proxy Access Level	-S-	View Name Proxy has access to:Any form (%),
 								 Faid info (bwrkrhst.P_DispAwdHst),
 								 Billing Info (bwsksphs.P_ViewStatement)
  11	Term Code			-S-	Term code for selecting students record for the letter processing.
- 12	Audit / Update		-S-	Enter A to print to log and not update; U to send email and update gurmail
+ 12	Audit/Update/Debug	-S-	Enter A to print to log and not update; U to send email and update gurmail;D=debug
  13	Email Subject Text	-S-	Subject Text for Emails.
  14	FROM Email Address	-S-	FROM Email Address. Required for Oracle Mail API.
  15	FROM Name			-S-	Used with From Email Address; include name of sender with email addr.
@@ -121,9 +121,9 @@ class LetterService {
 		} else if (jobparms['03'] && jobparms['04']) {
 			//via a selection population
 			srcIdx = 1
-		} else if (jobparms['07'] == 'Y') {
-			// from billing population
-			srcIdx = 2
+//		} else if (jobparms['07'] == 'Y') { 
+//			// from billing population
+//			srcIdx = 2
 		} else {
 			// none to be found
 			srcIdx = 3
@@ -158,13 +158,12 @@ class LetterService {
 		fetchStuDynoData(ltr) // populate dynamic Data for the student
 		String message_text =  ltr.composeLetter(letterText)
 		
+		if (jobparms['07'] == 'Y'){ltr.dump()}
+
 		if (jobparms['12'] != 'U'){
 			// here in audit mode.. show what would have done
-			// TODO have different debug level from just audit.
-			ltr.dump()
-			println "Email Body"
-			println "=========="
-						
+
+			println "Email ====================================="
 			ltr.emailAddresses.each { 
 				println "To: ${ltr.fullName} <${it}>"
 				results[0] += 1
@@ -183,6 +182,7 @@ class LetterService {
 				println "Subject: ${subject}"
 			}
 			println "\n${message_text}\n"
+			println "End   ====================================="
 		} else {
 			// Here sending the emails
 			//  mail successful will be T or F 
@@ -197,7 +197,7 @@ class LetterService {
 					Sql.inout(Sql.VARCHAR(mail_success)) , 
 					Sql.inout(Sql.VARCHAR(mail_errmsg))])  { successflag, errmsg ->   
 							bsuccess = bsuccess || (successflag == 'T')
-							results << "${errmsg}(${emailaddr}) "
+							results << "${errmsg} (${emailaddr}) "
 							results[0] += (successflag == 'T') ? 1 : 0 //increment success count 
 							results[1] += (successflag != 'T') ? 1 : 0 //increment error count 
 						}
@@ -212,6 +212,8 @@ class LetterService {
 				}
 			}
 		}
+		if (jobparms['07'] == 'Y'){"Generate Letter response: " + results}
+		
 		return results
 	}
 	

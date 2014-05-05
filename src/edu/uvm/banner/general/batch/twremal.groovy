@@ -38,12 +38,11 @@ class Twremal  extends BannerBatchProcessor{
 				}	
 		} else {
 			//process each student
-			ltrsvc.dump()
+			if (parameterMap['07'] == 'Y'){ltrsvc.dump()}
 			def students = ltrsvc.getStudents()
 			students.each { stu ->
 				println "Processing ${stu}"
 				List response = ltrsvc.generateLetter(stu)
-				println response
 				//increment control total counts
 				emailsSent += response[0]
 				emailsError += response[1]
@@ -52,12 +51,19 @@ class Twremal  extends BannerBatchProcessor{
 	
 				rpt.pl([stu.id, stu.fullname, response[3]])
 				response[4..response.size()-1].each {rpt.pl(['', '', it]) }
-				//TODO add commit.
+				//commit any updates.
+				try {
+					BannerUtils.performCommit(conn)
+				} catch (SQLException sqle) {
+					String errmsg = "!!! Commit failed on ${stu}"
+					BannerUtils.performRollback(conn)
+				}
 			}
 		}
 		
 		// display sorted parameter list & processed counts
-		rpt.newPage()
+		//rpt.newPage()
+		rpt.pl('')
 		rpt.pl("* * * REPORT CONTROL INFORMATION - ${getJobName()} - Release ${release} * * *")
 		rpt.pl('')
 		rpt.pl(ltrsvc.formatParameters())
@@ -82,6 +88,7 @@ class Twremal  extends BannerBatchProcessor{
 		String path = System.getProperty('lis.file.path')
 		path = path ? path + fs : ""
 		String filename = getJobName() + "_" + getJobNumber() + '.lis'
+		filename = filename.toLowerCase()
 		return path + filename
 	}
 	TabularReport initReport(String letter_code){
