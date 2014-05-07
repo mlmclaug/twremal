@@ -191,16 +191,20 @@ class LetterService {
 			def mail_success
 			def mail_errmsg
 			Sql sql = new Sql(db)
-			ltr.emailAddresses.each {emailaddr ->
-				sql.call(execSendEmail, [emailaddr,ltr.fullName,jobparms['14'],
-					jobparms['15'],jobparms['16'], jobparms['13'],message_text,
-					Sql.inout(Sql.VARCHAR(mail_success)) , 
-					Sql.inout(Sql.VARCHAR(mail_errmsg))])  { successflag, errmsg ->   
-							bsuccess = bsuccess || (successflag == 'T')
-							results << "${errmsg} (${emailaddr}) "
-							results[0] += (successflag == 'T') ? 1 : 0 //increment success count 
-							results[1] += (successflag != 'T') ? 1 : 0 //increment error count 
-						}
+			if (ltr.emailAddresses.size() > 0){
+				ltr.emailAddresses.each {emailaddr ->
+					sql.call(execSendEmail, [emailaddr,ltr.fullName,jobparms['14'],
+						jobparms['15'],jobparms['16'], jobparms['13'],message_text,
+						Sql.inout(Sql.VARCHAR(mail_success)) ,
+						Sql.inout(Sql.VARCHAR(mail_errmsg))])  { successflag, errmsg ->
+								bsuccess = bsuccess || (successflag == 'T')
+								results << "${errmsg} (${emailaddr}) "
+								results[0] += (successflag == 'T') ? 1 : 0 //increment success count
+								results[1] += (successflag != 'T') ? 1 : 0 //increment error count
+							}
+				}
+			} else {
+				results << "Not Sent - No Email Address"
 			}
 	
 			if (bsuccess){
@@ -400,10 +404,10 @@ class LetterService {
 		from spriden, glbextr
 		where spriden_change_ind is null
 		and   spriden_pidm = glbextr_key
-		and   glbextr_application = :popsel_appl
-		and   glbextr_selection = :popsel_sel
-		and   glbextr_creator_id = nvl(:parm_popsel_crID, user)
-		and   glbextr_user_Id = nvl(:parm_popsel_usID, user)
+		and   glbextr_application = upper(:popsel_appl)
+		and   glbextr_selection = upper(:popsel_sel)
+		and   glbextr_creator_id = upper(nvl(:parm_popsel_crID, user))
+		and   glbextr_user_Id = upper(nvl(:parm_popsel_usID, user))
 		order by spriden_last_name, spriden_first_name, spriden_mi,spriden_id
 	"""
 

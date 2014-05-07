@@ -60,8 +60,8 @@ class Letter {
 			}
 
 			if (column_id){
-				//Here have dynamic data to insert  (w/ trailing space)
-				body << dd //+ ((0<dd.size()) ? ' ' : '')
+				//Here have dynamic data to insert
+				body << (dd ?: '')
 			}
 
 			if (text_var){

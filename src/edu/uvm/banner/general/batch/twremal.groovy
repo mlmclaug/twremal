@@ -50,7 +50,9 @@ class Twremal  extends BannerBatchProcessor{
 				numStudentswoEmails += (response[0]+response[1] == 0) ? 1 : 0 
 	
 				rpt.pl([stu.id, stu.fullname, response[3]])
-				response[4..response.size()-1].each {rpt.pl(['', '', it]) }
+				if (response.size() > 4) {
+					response[4..response.size()-1].each {rpt.pl(['', '', it]) }
+				}
 				//commit any updates.
 				try {
 					BannerUtils.performCommit(conn)
