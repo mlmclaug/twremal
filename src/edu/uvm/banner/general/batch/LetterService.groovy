@@ -1,5 +1,6 @@
 package edu.uvm.banner.general.batch
 import java.sql.Connection
+import java.util.List;
 import java.util.Map;
 
 import groovy.sql.Sql
@@ -36,6 +37,8 @@ class LetterService {
 	// used to generate the emails.
 	def letterText
 	def letterDynoCols
+	Boolean letterUsesBillData
+	
 	String letter_code
 	String letter_module
 	String letter_view
@@ -46,6 +49,7 @@ class LetterService {
 		letter_code = jobparms['01']
 		Map parms = [letter_code : letter_code]
 		letterText = sql.rows(qryLetterText, parms)
+		letterUsesBillData = letterText.any { Letter.hasTag( it.SORELTR_TEXT_VAR)}
 		letterDynoCols = sql.rows(qryLetterDynoCols, parms)
 		def r =  sql.firstRow(qryLetterDynoColsView, parms)
 		letter_module = r.stvelmt_code
@@ -53,6 +57,7 @@ class LetterService {
 		jobparm_names = fetchJobParmNames()
 		return (letterText) ? '' : "!!! No letter text found for ${letter_code}"
 	}
+	
 	def countStudents(){
 		//count the number of students identified by the selection 
 		String sqlexprn = ""
@@ -147,29 +152,38 @@ class LetterService {
 	List generateLetter(def stu){
 		// Given a student (pidm/id/name/... generate letter
 		// Populate a Letter with the input data
-		// first element is count of success, [1]=count of errors, [2]=count of students missing gurmail entry
+		// result[0] count of success, [1]=count of errors, 
+		//     [2]=count gurmail entry inserts, [3]=count gurmail entry updates
 		// subsequent elements are result messages for each email address.
-		List results = [0,0,0]
+		List results = [0,0,0,0]
+		String mode = jobparms['12']   //A|U
+		String verbose =jobparms['07'] //Y|N
 		Letter ltr = new Letter([pidm : stu.pidm, id : stu.id,
 			fullName : stu.fullname, lastName : stu.last_name,
 			firstName : stu.first_name, parmTermCode : getParmTermCode(),
 			emailAddresses : getEmailAddresses( (Integer) stu.pidm )])
 		setGurmail(ltr) // populate the gurmail row and signature info
 		fetchStuDynoData(ltr) // populate dynamic Data for the student
+		fetchStuBillingInfo(ltr) // populate billing message if needed
+		
 		String message_text =  ltr.composeLetter(letterText)
 		
-		if (jobparms['07'] == 'Y'){ltr.dump()}
+		if (verbose == 'Y'){ltr.dump()}
 
-		if (jobparms['12'] != 'U'){
-			// here in audit mode.. show what would have done
-
-			println "Email ====================================="
-			ltr.emailAddresses.each { 
-				println "To: ${ltr.fullName} <${it}>"
-				results[0] += 1
-				results << "Email Test(${it}) "
+		if (mode == 'A' || verbose == 'Y' ){
+			// here in audit mode or verbose.. show what would have sent
+			println "Email Start ====================================="
+			if (ltr.emailAddresses.size() > 0){
+				ltr.emailAddresses.each { 
+					println "To: ${ltr.fullName} <${it}>"
+					if (mode == 'A' ){
+						results[0] += 1
+						results << "Email Test (${it}) "
+					}
+				}
+			} else {
+				results << "Not Sent - No Email Address"
 			}
-			results[2] += (ltr.rowid) ? 0 : 1
 			String sender_name = jobparms['15']
 			if (sender_name){
 			  println "From: ${sender_name} <${jobparms['14']}>"
@@ -182,15 +196,17 @@ class LetterService {
 				println "Subject: ${subject}"
 			}
 			println "\n${message_text}\n"
-			println "End   ====================================="
-		} else {
+			println "Email End ====================================="
+		}
+
+		Boolean bsuccess = false
+		Sql sql = new Sql(db)
+		if (mode == 'U'){
 			// Here sending the emails
 			//  mail successful will be T or F 
             // if it is not true to be T, then an error occurred
-			Boolean bsuccess = false
 			def mail_success
 			def mail_errmsg
-			Sql sql = new Sql(db)
 			if (ltr.emailAddresses.size() > 0){
 				ltr.emailAddresses.each {emailaddr ->
 					sql.call(execSendEmail, [emailaddr,ltr.fullName,jobparms['14'],
@@ -206,18 +222,23 @@ class LetterService {
 			} else {
 				results << "Not Sent - No Email Address"
 			}
-	
-			if (bsuccess){
-				// update gumail & commit transaction if any email went.
-				if ( ltr.rowid ){
-					sql.execute updateGurmail, [mail_row : ltr.rowid]
-				} else {
-					results[2] += 1 //missing gurmail row.
-				}
+		}
+		
+		if (bsuccess){
+			// update gurmail & if any email went.
+			if ( ltr.rowid ){
+				sql.execute updateGurmail, [mail_row : ltr.rowid]
+				results[3] += 1 
+			} else {
+				// Insert a gurmal record for this letter
+				sql.execute insertGurmail, 
+					[pidm : ltr.pidm, term_code : getParmTermCode(), system_ind : 'S',
+					 letter_module : letter_module, letter_code : letter_code]
+				results[2] += 1 
 			}
 		}
-		if (jobparms['07'] == 'Y'){"Generate Letter response: " + results}
 		
+		if (verbose  == 'Y'){println "Generate Letter response: " + results}
 		return results
 	}
 	
@@ -248,7 +269,7 @@ class LetterService {
 	
 	
 	void getDynamicData(Letter l){
-		// fetch and attach thedynamic data to be used in the letter
+		// fetch and attach the dynamic data to be used in the letter
 		Sql sql = new Sql(db)
 		def r = sql.firstRow(qrySudentGurmailRow,
 			[pidm:l.pidm, letter_code:letter_code, letter_module:letter_module , term_code: jobparms['11']])
@@ -272,7 +293,25 @@ class LetterService {
 		l.qryDynamic = makeDynoExpression(letter_module, l.adminIdentifier )
 	}
 	
-	
+	void fetchStuBillingInfo(Letter ltr){
+		// populate billing message and recipient name if needed
+		if (letterUsesBillData){
+			Sql sql = new Sql(db)
+			def r =  sql.firstRow(qryBillMessage, [pidm : ltr.pidm])
+			ltr.letterUsesBillData = letterUsesBillData
+			ltr.billInfo = [:]
+			Letter.billInfoTags.each{ tag, fldnm->
+				ltr.billInfo << [ "${tag}" : (r) ? r."${fldnm}" : '']
+			}
+//			String m = (r) ? r.BILL_MESSAGE : ''
+//			String n = (r) ? r.RECIPIENT_NAME : '' 
+//			ltr.billInfo = [ (Letter.billInfoTags[0]) :  m, (Letter.billInfoTags[1]) : n ] 
+		}else {
+			ltr.letterUsesBillData = letterUsesBillData
+			ltr.billInfo = [:] 
+		}
+	} 
+
 	void dump(){
 		// tester method to dump state of this letter service
 		
@@ -356,14 +395,17 @@ class LetterService {
 	void fetchStuDynoData(Letter l){
 		Sql sql = new Sql(db)
 		Map res = [:]
+		Map dflt = [:]
 		
 		letterDynoCols.each {
 			// skip the null entry in the query result... fetch data for all columns specified
 			if (it.SORELTR_COLUMN_ID){
 				String exprn = l.getQryDynamic()
 				exprn = exprn.replace('{0}',it.SORELTR_COLUMN_ID).replace('{1}',letter_view)
+				dflt = ["${it.SORELTR_COLUMN_ID}" : '']
 				//println exprn
-				res << sql.firstRow(exprn, l.getDynoParms())
+				def r = sql.firstRow(exprn, l.getDynoParms())
+				res << (r ?: dflt)
 			}
 		}
 		l.dynamicData = res 
@@ -480,22 +522,6 @@ class LetterService {
 		and not ( stvelmt_code in ('E', 'P'))
 	"""
 	
-	
-	// Get the student's gurmail row for the letter
-	private static String qrySudentGurmailRow = """
-	select gurmail_letr_code,
-		gurmail_term_code, gurmail_admin_identifier,
-		 gurmail.rowid,
-		 gurmail_init_code
-	  from gurmail
-	  where  gurmail_pidm = :pidm
-	  and gurmail_letr_code = :letter_code
-	  and gurmail_module_code = :letter_module
-	   and gurmail_date_printed is null
-	  and (( gurmail_term_code = :term_code)
-	  or (gurmail_term_code = '999999' and gurmail_module_code = 'S'))
-	"""
-	
 	// Get the signature for the letter
 	private static String qrySudentSignatureRow = """
 	select stvinit_desc, stvinit_email_address,	stvinit_title1,	stvinit_title2
@@ -525,16 +551,7 @@ class LetterService {
 		and gprauth_auth_ind = 'Y' and gprauth_page_name like :authfilter )
 	"""
 
-	// update Students gurmail w/ the print date
-	private static String updGurmail = """
-	update gurmail
-	set gurmail_date_printed = sysdate,
-	 gurmail_activity_date = sysdate,
-	 GURMAIL_ORIG_IND = 'E'
-	where rowid = :mail_row
-	"""
-
-	// update Students gurmail w/ the print date
+	// Send the email
 	private static String execSendEmail = """
 	BEGIN
 	SOKEMAL.P_SENDEMAIL(:email, :spriden_name,
@@ -544,17 +561,62 @@ class LetterService {
    END;
 	"""
 		
+	// Get the student's gurmail row for the letter
+	private static String qrySudentGurmailRow = """
+	select gurmail_letr_code,
+		gurmail_term_code, gurmail_admin_identifier,
+		 gurmail.rowid,
+		 gurmail_init_code
+	  from gurmail
+	  where  gurmail_pidm = :pidm
+	  and gurmail_letr_code = :letter_code
+	  and gurmail_module_code = :letter_module
+	   and gurmail_date_printed is null
+	  and (( gurmail_term_code = :term_code)
+	  or (gurmail_term_code = '999999' and gurmail_module_code = :letter_module))
+	"""
+	// update Students gurmail w/ the print date
 	private static String updateGurmail = """
 	set gurmail_date_printed = sysdate,
 	gurmail_activity_date = sysdate,
 	GURMAIL_ORIG_IND = 'E'
     where rowid = :mail_row
 	"""
-	
+	// insert a gurmail entry for this student w/ the print date
+	private static String insertGurmail = """
+       INSERT INTO GURMAIL
+        (GURMAIL_PIDM,
+         GURMAIL_TERM_CODE,
+         GURMAIL_AIDY_CODE,
+         GURMAIL_SYSTEM_IND,
+         GURMAIL_LETR_CODE,
+         GURMAIL_MODULE_CODE,
+         GURMAIL_DATE_PRINTED,
+         GURMAIL_USER,
+         GURMAIL_ACTIVITY_DATE,
+         GURMAIL_ORIG_IND)
+       VALUES
+        (:pidm,
+         :term_code,
+         uvm_utils.acadyr(:term_code),
+         :system_ind,
+         :letter_code,
+         :letter_module,
+         SYSDATE,
+         USER,
+         SYSDATE,
+         'E')
+	"""
+
 	private static String qryParameterNames = """
 	select gjbpdef_number key, gjbpdef_desc label from gjbpdef
 	where gjbpdef_job = :jobname
 	order by gjbpdef_number
 	"""
+	
+	private static String qryBillMessage = """
+	select RECIPIENT_NAME, BILL_MESSAGE from UVM_BILLING_DATA where pidm_key = :pidm
+	"""
+	
 }
 

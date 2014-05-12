@@ -9,7 +9,7 @@ class Letter {
 	String lastName
 	String firstName
 	String parmTermCode
-	// gumail row
+	// gumail row (if already there)
 	String letrCode
 	String termCode
 	String adminIdentifier
@@ -30,8 +30,14 @@ class Letter {
 	//Map of the dynamic data to be inserted into the letter text
 	Map dynamicData = [:]
 	Map formatTranslates = [ "<BR>":"\n","<H>":"\n","<P>":"\n\t"]
+	// Initially add a column to the AS_STUDENT_DATA view for the billing message. 
+	// Unfortunately AS is 'active students' not 'all students' and the billing recipients
+	// include many who are not active students... to get around this changed to 
+	// insert the message as a text substitution of a keyword: ${BILL_MESSAGE}
+	Boolean letterUsesBillData // include billing information in email
+	static Map billInfoTags = ['${BILL_MESSAGE}':'BILL_MESSAGE','${BILL_RECIPIENT}': 'RECIPIENT_NAME']
+	Map billInfo = [:]
 	
-
 	Map getDynoParms(){
 		//Return map w/ bind parameters used in the dynamic queries
 		return [spriden_pidm : pidm,
@@ -39,7 +45,12 @@ class Letter {
 			mail_seqno :  adminIdentifier,
 			parm_term_code : parmTermCode]
 	}
-	
+	static Boolean hasTag(String txt){
+		// return true if text contains any tag.
+		if (txt){
+		 billInfoTags.any {k,v -> txt?.contains(k)}
+		}
+	}
 
 	String composeLetter(def letterText){
 		//Composes the body of the email to be sent
@@ -51,6 +62,15 @@ class Letter {
 			String format_var  = e.soreltr_format_var
 
 			String dd = column_id ? dynamicData[column_id] : ''
+			
+			if (letterUsesBillData ){
+				billInfo.each { tag, fldnm ->
+					// Search for use of tag.  If found do the replace
+					if (text_var?.contains(tag)){
+						text_var = text_var.replace(tag, billInfo.get(tag))
+					}
+				}
+			}
 			
 			if ( format_var == null || (dd?.size()>0 && text_var?.size()>0)){
 				;
@@ -95,6 +115,9 @@ class Letter {
 
 		println "Dynamic data to be inserted into the letter text:"
 		dynamicData.each { k,v -> println " > ${k}=${v}" }
+		
+		println "Include Billing Message: ${letterUsesBillData}"
+		billInfo.each { k,v -> println " > ${k}=${v}" }
 				
 	}
 }

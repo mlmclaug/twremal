@@ -27,7 +27,8 @@ class Twremal  extends BannerBatchProcessor{
 		Integer emailsSent = 0
 		Integer emailsError = 0
 		Integer numStudentswoEmails = 0
-		Integer gurmailMissing = 0
+		Integer gurmailInserts = 0
+		Integer gurmailUpdates = 0
 		
 		if (ltrErrMsg || numStudents == 0){
 			// Here have nothing to process.. print error(s) to console & report and exit.
@@ -46,12 +47,13 @@ class Twremal  extends BannerBatchProcessor{
 				//increment control total counts
 				emailsSent += response[0]
 				emailsError += response[1]
-				gurmailMissing += response[2]
+				gurmailInserts += response[2]
+				gurmailUpdates += response[3]
 				numStudentswoEmails += (response[0]+response[1] == 0) ? 1 : 0 
 	
-				rpt.pl([stu.id, stu.fullname, response[3]])
-				if (response.size() > 4) {
-					response[4..response.size()-1].each {rpt.pl(['', '', it]) }
+				rpt.pl([stu.id, stu.fullname, response[4]])
+				if (response.size() > 5) {
+					response[5..response.size()-1].each {rpt.pl(['', '', it]) }
 				}
 				//commit any updates.
 				try {
@@ -74,8 +76,8 @@ class Twremal  extends BannerBatchProcessor{
 		rpt.pl("Number of Emails Sent: ${emailsSent}")
 		rpt.pl("Number of Emails Error: ${emailsError}")
 		rpt.pl("Number Students with no Email: ${numStudentswoEmails}")
-		rpt.pl("Number missing GURMAIL record for letter: ${gurmailMissing}")
-		//rpt.pl("Number of persons missing ")
+		rpt.pl("Number GURMAIL record inserts: ${gurmailInserts}")
+		rpt.pl("Number GURMAIL record updates: ${gurmailUpdates}")
 		
 		try {
 			BannerUtils.performCommit(conn)
