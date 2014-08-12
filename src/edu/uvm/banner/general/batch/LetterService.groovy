@@ -207,12 +207,20 @@ class LetterService {
             // if it is not true to be T, then an error occurred
 			def mail_success
 			def mail_errmsg
+			def l_error_type
+            def l_error_code
+            def l_error_msg
+
 			if (ltr.emailAddresses.size() > 0){
 				ltr.emailAddresses.each {emailaddr ->
 					sql.call(execSendEmail, [emailaddr,ltr.fullName,jobparms['14'],
 						jobparms['15'],jobparms['16'], jobparms['13'],message_text,
 						Sql.inout(Sql.VARCHAR(mail_success)) ,
-						Sql.inout(Sql.VARCHAR(mail_errmsg))])  { successflag, errmsg ->
+						Sql.inout(Sql.VARCHAR(mail_errmsg)),
+						Sql.inout(Sql.VARCHAR(l_error_type)),
+						Sql.inout(Sql.VARCHAR(l_error_code)),
+						Sql.inout(Sql.VARCHAR(l_error_msg))
+						])  { successflag, errmsg, error_type, error_code, error_msg  ->
 								bsuccess = bsuccess || (successflag == 'T')
 								results << "${errmsg} (${emailaddr}) "
 								results[0] += (successflag == 'T') ? 1 : 0 //increment success count
@@ -557,7 +565,8 @@ class LetterService {
 	SOKEMAL.P_SENDEMAIL(:email, :spriden_name,
 	 :parm_email_address, :parm_sender_name,
 	 :parm_email_server,:parm_email_subject,
-	 :email_memo, :mail_successful, :mail_errmsg);
+	 :email_memo, :mail_successful, :mail_errmsg,
+     :l_error_type, :l_error_code, :l_error_msg);
    END;
 	"""
 		
