@@ -83,19 +83,15 @@ class LetterService {
 		Sql sql = new Sql(db)
 		//Banner Student email(s)
 		jobparms['08'].each {
-			def r = sql.firstRow(qrySudentBannerEmailAddress,
+			def r = sql.rows(qrySudentBannerEmailAddress,
 					[pidm:pidm, mailcode:it])
-			if (r){
-				email_addr << r.GOREMAL_EMAIL_ADDRESS
-			}
+			r.each { email_addr << it.GOREMAL_EMAIL_ADDRESS }
 		}
 		//Proxy
 		jobparms['09'].each {
-			def r = sql.firstRow(qrySudentProxyEmailAddress,
+			def r = sql.rows(qrySudentProxyEmailAddress,
 					[pidm:pidm, proxyrole:it, authfilter:jobparms['10'] ])
-			if (r){
-				email_addr << r.gpbprxy_email_address
-			}
+			r.each {email_addr << it.gpbprxy_email_address }
 		}
 		// return unique list
 		return email_addr*.toLowerCase()?.unique()
