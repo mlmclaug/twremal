@@ -549,7 +549,6 @@ class LetterService {
 	where gprxref_person_pidm = :pidm 
 	and gprxref_retp_code = UPPER( :proxyrole)
 	and gprxref_proxy_idm = gpbprxy_proxy_idm
-	and gpbprxy_pin_disabled_ind = 'N'
 	and gpbprxy_pin_exp_date > sysdate
 	and exists (select 'x' from gprauth where gprauth_proxy_idm = gprxref_proxy_idm and gprauth_person_pidm = gprxref_person_pidm
 		and gprauth_auth_ind = 'Y' and gprauth_page_name like :authfilter )
