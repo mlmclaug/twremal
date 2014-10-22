@@ -582,6 +582,7 @@ class LetterService {
 	"""
 	// update Students gurmail w/ the print date
 	private static String updateGurmail = """
+    update gurmail
 	set gurmail_date_printed = sysdate,
 	gurmail_activity_date = sysdate,
 	GURMAIL_ORIG_IND = 'E'
