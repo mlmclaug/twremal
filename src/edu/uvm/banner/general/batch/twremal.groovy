@@ -84,6 +84,7 @@ class Twremal  extends BannerBatchProcessor{
 		} catch (SQLException sqle) {
 			BannerUtils.performRollback(conn)
 		}
+		println "End process ${getJobName()} using one_up = ${getJobNumber()}"
 	}
 	
 	String makelisfilename(){

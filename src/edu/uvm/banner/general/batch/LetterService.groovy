@@ -31,6 +31,7 @@ class LetterService {
  15	FROM Name			-S-	Used with From Email Address; include name of sender with email addr.
  16	Mail Host			-S-	This is the mail host to send the email from. ex: mailhost.xxx.edu
  17	Mail Host Port Number-S-Mail Host Port Number from which the email will be sent. Default = 25
+ 18	Content-Type        -S- Email mime type text/plain or text/html;charset=utf-8. Default = text/plain
  */
  
 	// Properties holding letter definition
@@ -52,8 +53,8 @@ class LetterService {
 		letterUsesBillData = letterText.any { Letter.hasTag( it.SORELTR_TEXT_VAR)}
 		letterDynoCols = sql.rows(qryLetterDynoCols, parms)
 		def r =  sql.firstRow(qryLetterDynoColsView, parms)
-		letter_module = r.stvelmt_code
-		letter_view = r.stvelmt_view
+		letter_module = r?.stvelmt_code
+		letter_view = r?.stvelmt_view
 		jobparm_names = fetchJobParmNames()
 		return (letterText) ? '' : "!!! No letter text found for ${letter_code}"
 	}
@@ -203,20 +204,15 @@ class LetterService {
             // if it is not true to be T, then an error occurred
 			def mail_success
 			def mail_errmsg
-			def l_error_type
-            def l_error_code
-            def l_error_msg
 
 			if (ltr.emailAddresses.size() > 0){
 				ltr.emailAddresses.each {emailaddr ->
 					sql.call(execSendEmail, [emailaddr,ltr.fullName,jobparms['14'],
 						jobparms['15'],jobparms['16'], jobparms['13'],message_text,
+						jobparms['17'], jobparms['18'],
 						Sql.inout(Sql.VARCHAR(mail_success)) ,
-						Sql.inout(Sql.VARCHAR(mail_errmsg)),
-						Sql.inout(Sql.VARCHAR(l_error_type)),
-						Sql.inout(Sql.VARCHAR(l_error_code)),
-						Sql.inout(Sql.VARCHAR(l_error_msg))
-						])  { successflag, errmsg, error_type, error_code, error_msg  ->
+						Sql.inout(Sql.VARCHAR(mail_errmsg))
+						])  { successflag, errmsg ->
 								bsuccess = bsuccess || (successflag == 'T')
 								results << "${errmsg} (${emailaddr}) "
 								results[0] += (successflag == 'T') ? 1 : 0 //increment success count
@@ -504,7 +500,7 @@ class LetterService {
 			   soreltr_column_id,
 			   upper(soreltr_format_var) soreltr_format_var
 		from soreltr
-		where  soreltr_letr_code = :letter_code
+		where  soreltr_letr_code = upper(:letter_code)
 		order by soreltr_seq_no
 	"""
 
@@ -512,7 +508,7 @@ class LetterService {
 	private static String qryLetterDynoCols = """
 		select soreltr_column_id
 		from soreltr
-		where  soreltr_letr_code = :letter_code
+		where  soreltr_letr_code = upper(:letter_code)
 		group by soreltr_column_id
 		order by soreltr_column_id
 	"""
@@ -521,7 +517,7 @@ class LetterService {
 	private static String qryLetterDynoColsView = """
 		SELECT stvelmt_view , stvelmt_code
 		FROM   stvelmt, soreltl
-		where soreltl_letr_code = :letter_code
+		where soreltl_letr_code = upper(:letter_code)
 		and stvelmt_code = soreltl_elmt_code
 		and not ( stvelmt_code in ('E', 'P'))
 	"""
@@ -555,17 +551,27 @@ class LetterService {
 	"""
 
 	// Send the email
+//	private static String execSendEmail = """
+//	BEGIN
+//	SOKEMAL.P_SENDEMAIL(:email, :spriden_name,
+//	 :parm_email_address, :parm_sender_name,
+//	 :parm_email_server,:parm_email_subject,
+//	 :email_memo, :mail_successful, :mail_errmsg,
+//     :l_error_type, :l_error_code, :l_error_msg);
+//   END;
+//	"""
+    //send the email. mlm 10/23/2024 - use rokemal version to can set the content_type.
 	private static String execSendEmail = """
 	BEGIN
-	SOKEMAL.P_SENDEMAIL(:email, :spriden_name,
+	ROKEMAL.P_SENDEMAIL(:email, :spriden_name,
 	 :parm_email_address, :parm_sender_name,
 	 :parm_email_server,:parm_email_subject,
-	 :email_memo, :mail_successful, :mail_errmsg,
-     :l_error_type, :l_error_code, :l_error_msg);
+	 :email_memo,:parm_mail_port,:parm_content_type,
+	 :mail_successful, :mail_errmsg);
    END;
 	"""
-		
-	// Get the student's gurmail row for the letter
+
+ 	// Get the student's gurmail row for the letter
 	private static String qrySudentGurmailRow = """
 	select gurmail_letr_code,
 		gurmail_term_code, gurmail_admin_identifier,
@@ -573,7 +579,7 @@ class LetterService {
 		 gurmail_init_code
 	  from gurmail
 	  where  gurmail_pidm = :pidm
-	  and gurmail_letr_code = :letter_code
+	  and gurmail_letr_code = upper(:letter_code)
 	  and gurmail_module_code = :letter_module
 	   and gurmail_date_printed is null
 	  and (( gurmail_term_code = :term_code)
@@ -605,7 +611,7 @@ class LetterService {
          :term_code,
          uvm_utils.acadyr(:term_code),
          :system_ind,
-         :letter_code,
+         upper(:letter_code),
          :letter_module,
          SYSDATE,
          USER,
