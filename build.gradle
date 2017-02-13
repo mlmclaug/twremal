@@ -1,0 +1,24 @@
+// Assumes JDK 7 and Groovy 2.0.7 set in environment.
+// At some point move to JDK 8 and more recent Groovy
+
+apply plugin: 'groovy'
+
+sourceSets {
+    main {
+        groovy {
+            srcDirs = ['src']
+        }
+    }
+}
+
+repositories {
+    flatDir { dirs '/Users/mlm/dev/noremal/twphbif/lib' }
+}
+
+dependencies {
+	compile 'org.codehaus.groovy:groovy-all:2.0.7'
+	compile files('/Users/mlm/dev/noremal/twphbif/lib/gurjbif.jar')
+	compile files('/Users/mlm/dev/noremal/twphbif/lib/ojdbc6.jar')
+	compile files('/Users/mlm/dev/noremal/twphbif/lib/tabularreport.jar')
+	compile files('/Users/mlm/dev/noremal/twphbif/lib/log4j-1_2_15.jar')
+}
